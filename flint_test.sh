@@ -100,6 +100,19 @@ has_sudo()     {  # droits sudo effectifs (sudoers OU groupe wheel/sudo)
 }
 sshd_eff()     { sshd -T 2>/dev/null | grep -i "^$1 " | awk '{print $2}' | head -1; }
 
+# Paquet présent : via rpm, OU binaire dans le PATH, OU dans les chemins courants
+# (go install, ~/.local/bin, /opt...). Couvre ffuf/gobuster souvent hors dépôts.
+pkg_present() {
+    local p="$1" d
+    rpm -q "$p" >/dev/null 2>&1 && return 0
+    command -v "$p" >/dev/null 2>&1 && return 0
+    for d in /usr/local/bin /usr/bin /bin /sbin /usr/sbin /opt/*/bin \
+             /root/go/bin /root/.local/bin /home/*/go/bin /home/*/.local/bin; do
+        [ -x "$d/$p" ] && return 0
+    done
+    return 1
+}
+
 lang_en() { local l
     l=$(grep -hE '^LANG=' /etc/locale.conf /etc/default/locale 2>/dev/null | head -1 | cut -d= -f2 | tr -d '"')
     [ -z "$l" ] && l="${LANG:-}"; printf '%s' "$l" | grep -qiE '^en_'; }
@@ -165,9 +178,13 @@ test_arch() {
     cmp_size "Swap" 2048 gb "$swapm"           # 2 Go
 
     hdr "Environnement graphique"
-    local graph=1 heavy=1
-    pacman -Qq 2>/dev/null | grep -qiE '^(xorg-server|xorg-xinit|wayland|weston|sway|hyprland|i3-wm|i3-gaps|bspwm|openbox|xfce4|mate|cinnamon|lxqt|lxde|enlightenment|qtile|awesome|dwm|labwc|river)$' && graph=0
+    local graph=1 heavy=1 des dm
+    des=$(pacman -Qq 2>/dev/null | grep -iE '^(xorg-server|xorg-xinit|wayland|weston|sway|hyprland|i3-wm|i3-gaps|i3|bspwm|openbox|fluxbox|xfce4|xfce4-session|mate-session|cinnamon|lxqt-session|lxsession|lxde|enlightenment|qtile|awesome|dwm|labwc|river|budgie-desktop|deepin|gnome-shell|gnome-session|plasma-desktop|plasma-meta|plasma-workspace)$' | tr '\n' ' ')
+    dm=$(systemctl list-unit-files 2>/dev/null | grep -oiE '(gdm|sddm|lightdm|ly|lxdm|greetd)\.service' | head -1)
+    printf "  ${C}Détecté : ${des:-aucun paquet graphique}${dm:+  | display-manager: $dm}${N}\n"
+    [ -n "$des" ] && graph=0
     { [ -x /usr/bin/Xorg ] || [ -x /usr/bin/X ] || [ -x /usr/bin/Hyprland ] || [ -x /usr/bin/sway ]; } && graph=0
+    [ -n "$dm" ] && graph=0
     LBL="Environnement graphique installé"; if [ "$graph" -eq 0 ]; then pass "$LBL"; else fail "$LBL"; fi
     pacman -Qq 2>/dev/null | grep -qiE '^(gnome-shell|gnome-session|plasma-desktop|plasma-meta|plasma-workspace)$' && heavy=0
     LBL="N'est ni Gnome ni KDE Plasma"; if [ "$heavy" -ne 0 ]; then pass "$LBL"; else fail "$LBL"; fi
@@ -201,15 +218,16 @@ test_fedora() {
     LBL="pierre existe + mot de passe + sudo"
     if user_exists pierre && user_haspass pierre && has_sudo pierre; then pass "$LBL"; else fail "$LBL"; fi
 
-    hdr "Paquets Cyber"
-    local p found
+    hdr "Paquets Cyber (8 attendus)"
+    local p ok2
     for p in openvpn nmap ffuf gobuster hashcat john hydra netcat; do
-        found=1; rpm -q "$p" >/dev/null 2>&1 && found=0
+        ok2=1
         case "$p" in
-            netcat) { command -v nc >/dev/null || command -v ncat >/dev/null || rpm -q nmap-ncat >/dev/null 2>&1; } && found=0;;
-            *)      command -v "$p" >/dev/null 2>&1 && found=0;;
+            netcat) { pkg_present netcat || command -v nc >/dev/null || command -v ncat >/dev/null || rpm -q nmap-ncat >/dev/null 2>&1; } && ok2=0;;
+            john)   { pkg_present john || rpm -q john-the-ripper >/dev/null 2>&1; } && ok2=0;;
+            *)      pkg_present "$p" && ok2=0;;
         esac
-        LBL="Paquet $p"; if [ "$found" -eq 0 ]; then pass "$LBL"; else fail "$LBL"; fi
+        LBL="Paquet $p"; if [ "$ok2" -eq 0 ]; then pass "$LBL"; else fail "$LBL"; fi
     done
 
     hdr "Home d'Arch dans Fedora"
