@@ -14,8 +14,8 @@ paquets cyber (Fedora), home d'Arch monté dans Fedora… puis affiche un **scor
 ## Utilisation
 
 ```bash
-git clone https://github.com/<votre-compte>/flint-tester.git
-cd flint-tester
+git clone https://github.com/edwinfranck/flint-testers.git
+cd flint-testers
 chmod +x flint_test.sh
 
 # Sous Arch (booté sur Arch) :
@@ -23,6 +23,9 @@ sudo ./flint_test.sh
 
 # Sous Fedora (booté sur Fedora) :
 sudo ./flint_test.sh
+
+# Mode preuve (affiche lsblk, df, id, sshd -T... sous chaque test) :
+sudo ./flint_test.sh -v
 ```
 
 > Le script se relance tout seul avec `sudo` (lecture de `/etc/shadow`, `sshd_config`…).
@@ -31,6 +34,17 @@ sudo ./flint_test.sh
 > sudo ./flint_test.sh arch
 > sudo ./flint_test.sh fedora
 > ```
+
+## Tout s'affiche dans le terminal
+
+- **OK / FAIL / ??** pour chaque critère, avec **taille attendue vs trouvée**.
+- Quand un point est raté → la **commande exacte pour corriger** (`→ corriger : …`).
+- Une section **Bonus détectés** (chiffrement LUKS, ricing, outils pentest…).
+- Un **test SSH réel** (si la clé est disponible sur la machine).
+- Une **fiche de notation** récap + le **score** de l'OS courant.
+- Si tu as lancé **Arch puis Fedora**, un **TOTAL COMBINÉ** s'affiche.
+
+> Une copie de la fiche est aussi écrite dans `flint_result_<os>.txt` (ignoré par git).
 
 ## Lecture des résultats
 
