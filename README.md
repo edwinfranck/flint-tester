@@ -32,7 +32,20 @@ sudo ./flint_test.sh
 - **`[À VÉRIFIER]`** : impossible à juger automatiquement (clavier natal, fuseau
   horaire) → la valeur est affichée, le correcteur tranche.
 
+Pour les **partitions**, en plus du verdict, le script affiche le **nombre de
+partitions** trouvées, le **schéma réel du disque** (`lsblk`) et une **comparaison
+attendu / trouvé** taille par taille.
+
 À la fin : un résumé `X PASSED / Y NOT PASSED` pour l'OS courant.
+
+## Enregistrer la sortie dans un fichier .txt
+
+Les couleurs sont automatiquement retirées quand la sortie va dans un fichier :
+
+```bash
+sudo ./flint_test.sh arch | tee resultat_arch.txt   # à l'écran + dans le fichier
+sudo ./flint_test.sh arch > resultat_arch.txt 2>&1  # uniquement dans le fichier
+```
 
 ## Avertissement
 

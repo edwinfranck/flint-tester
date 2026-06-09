@@ -40,9 +40,35 @@ size_mib() {
     echo $(( b / 1024 / 1024 ))
 }
 in_range() { [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]; }
-check_part() {  # label mountpoint lo hi (MiB)
-    local sz; sz=$(size_mib "$2")
-    if [ "$sz" -ne 0 ] && in_range "$sz" "$3" "$4"; then pass "$1"; else fail "$1"; fi
+fmt_size() { if [ "$2" = mb ]; then echo "${1} Mio"
+             else awk -v m="$1" 'BEGIN{printf "%.1f Gio", m/1024}'; fi; }
+
+# Ligne avec comparaison : statut(ok|ko) label attendu trouvé
+row() {
+    if [ "$1" = ok ]; then
+        printf "  ${G}[  PASSED  ]${N} %-22s ${C}attendu %-9s | trouvé %s${N}\n" "$2" "$3" "$4"; PASS=$((PASS+1))
+    else
+        printf "  ${R}[NOT PASSED]${N} %-22s ${C}attendu %-9s | trouvé %s${N}\n" "$2" "$3" "$4"; FAIL=$((FAIL+1))
+    fi
+}
+# label mountpoint lo hi (MiB) attendu-affiché
+part_row() {
+    local sz scale found
+    sz=$(size_mib "$2")
+    if [ "$4" -lt 1000 ]; then scale=mb; else scale=gb; fi
+    if [ "$sz" -eq 0 ]; then found="ABSENTE"; row ko "$1" "$5" "$found"; return; fi
+    found=$(fmt_size "$sz" "$scale")
+    if in_range "$sz" "$3" "$4"; then row ok "$1" "$5" "$found"; else row ko "$1" "$5" "$found"; fi
+}
+# Vue d'ensemble : nombre de partitions + schéma réel
+part_overview() {
+    local nparts nlvm
+    nparts=$(lsblk -rno TYPE 2>/dev/null | grep -c '^part$')
+    nlvm=$(lsblk -rno TYPE 2>/dev/null | grep -c '^lvm$')
+    printf "  ${C}Partitions physiques détectées : %s${N}\n" "$nparts"
+    [ "$nlvm" -gt 0 ] && printf "  ${C}Volumes logiques LVM détectés  : %s${N}\n" "$nlvm"
+    printf "  ${C}Schéma réel du disque :${N}\n"
+    lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT 2>/dev/null | grep -vE 'loop|sr0' | sed 's/^/    /'
 }
 
 user_exists()  { id "$1" >/dev/null 2>&1; }
@@ -80,15 +106,19 @@ check_ssh() {
 test_arch() {
     printf "\n${B}#############  ARCH LINUX  #############${N}\n"
 
-    hdr "Partitionnement"
-    check_part "Partition root = 15 Go" /     13000 17500
-    check_part "Partition home = 5 Go"  /home  4300  6000
-    check_part "Partition boot = 512 Mo" /boot  400   700
+    hdr "Partitionnement  (attendu : 5 partitions)"
+    part_overview
+    echo
+    part_row "Partition root" /     13000 17500 "15 Go"
+    part_row "Partition home" /home  4300  6000 "5 Go"
+    part_row "Partition boot" /boot   400   700 "512 Mo"
     local efimp=/boot/efi; [ -d /efi ] && findmnt /efi >/dev/null 2>&1 && efimp=/efi
-    check_part "Partition EFI = 512 Mo" "$efimp" 400  700
+    part_row "Partition EFI" "$efimp"  400  700 "512 Mo"
     local swapb swapm; swapb=$(swapon --show=SIZE --bytes --noheadings 2>/dev/null | head -1)
     swapm=$(( ${swapb:-0} / 1024 / 1024 ))
-    LBL="Swap = 2 Go"; if in_range "$swapm" 1700 2400; then pass "$LBL"; else fail "$LBL"; fi
+    if [ "${swapb:-0}" -eq 0 ]; then row ko "Swap" "2 Go" "AUCUN"
+    elif in_range "$swapm" 1700 2400; then row ok "Swap" "2 Go" "$(fmt_size "$swapm" gb)"
+    else row ko "Swap" "2 Go" "$(fmt_size "$swapm" gb)"; fi
 
     hdr "Environnement graphique"
     local graph=1 heavy=1
@@ -112,12 +142,14 @@ test_arch() {
 test_fedora() {
     printf "\n${B}#############  FEDORA  #############${N}\n"
 
-    hdr "Partitionnement (LVM)"
-    check_part "Partition root = 20 Go" /     17000 23000
-    check_part "Partition home = 10 Go" /home  8500 12000
-    check_part "Partition boot = 512 Mo" /boot  400   700
+    hdr "Partitionnement LVM  (attendu : 4 partitions/volumes)"
+    part_overview
+    echo
+    part_row "Volume root" /     17000 23000 "20 Go"
+    part_row "Volume home" /home  8500 12000 "10 Go"
+    part_row "Partition boot" /boot 400   700 "512 Mo"
     local efimp=/boot/efi; [ -d /efi ] && findmnt /efi >/dev/null 2>&1 && efimp=/efi
-    check_part "Partition EFI = 512 Mo" "$efimp" 400  700
+    part_row "Partition EFI" "$efimp" 400  700 "512 Mo"
 
     check_locales
 
