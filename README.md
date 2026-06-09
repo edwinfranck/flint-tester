@@ -13,7 +13,18 @@ l'OS concerné**. Le script détecte automatiquement où il tourne :
 
 👉 Lance-le **sur Arch, puis reboote et relance-le sur Fedora**.
 
-## Utilisation
+## Utilisation rapide (sans git ni navigateur)
+
+Sur Arch/Fedora, `curl` est déjà présent — une seule ligne, courte à taper :
+
+```bash
+curl -L tinyurl.com/flinttek | sudo bash
+```
+
+Forcer l'OS si besoin : `curl -L tinyurl.com/flinttek | sudo bash -s arch`
+Garder le fichier : `curl -LO tinyurl.com/flinttek && sudo bash flinttek`
+
+## Utilisation (avec git)
 
 ```bash
 git clone https://github.com/edwinfranck/flint-tester.git
