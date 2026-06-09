@@ -14,8 +14,8 @@ paquets cyber (Fedora), home d'Arch monté dans Fedora… puis affiche un **scor
 ## Utilisation
 
 ```bash
-git clone https://github.com/edwinfranck/flint-testers.git
-cd flint-testers
+git clone https://github.com/edwinfranck/flint-tester.git
+cd flint-tester
 chmod +x flint_test.sh
 
 # Sous Arch (booté sur Arch) :
