@@ -87,10 +87,17 @@ part_overview() {
 }
 
 user_exists()  { id "$1" >/dev/null 2>&1; }
-user_haspass() { local h; h=$(getent shadow "$1" 2>/dev/null | cut -d: -f2)
-                 case "$h" in $'\x24'*) return 0;; *) return 1;; esac; }
+user_haspass() {  # mot de passe réellement utilisable (P), pas verrouillé (L) ni absent (NP)
+    local st; st=$(passwd -S "$1" 2>/dev/null | awk '{print $2}')
+    case "$st" in P|PS) return 0;; L|LK|NP) return 1;; esac
+    local h; h=$(getent shadow "$1" 2>/dev/null | cut -d: -f2)   # repli
+    case "$h" in $'\x24'*) return 0;; *) return 1;; esac
+}
 in_group()     { id -nG "$1" 2>/dev/null | tr ' ' '\n' | grep -qx "$2"; }
-has_sudo()     { id -nG "$1" 2>/dev/null | tr ' ' '\n' | grep -qxE 'sudo|wheel'; }
+has_sudo()     {  # droits sudo effectifs (sudoers OU groupe wheel/sudo)
+    sudo -lU "$1" 2>/dev/null | grep -qw 'ALL' && return 0
+    id -nG "$1" 2>/dev/null | tr ' ' '\n' | grep -qxE 'sudo|wheel'
+}
 sshd_eff()     { sshd -T 2>/dev/null | grep -i "^$1 " | awk '{print $2}' | head -1; }
 
 lang_en() { local l
