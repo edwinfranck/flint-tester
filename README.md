@@ -35,16 +35,38 @@ sudo ./flint_test.sh -v
 > sudo ./flint_test.sh fedora
 > ```
 
-## Tout s'affiche dans le terminal
+## ⚠ Projet DUAL BOOT : à lancer sur LES DEUX OS
 
-- **OK / FAIL / ??** pour chaque critère, avec **taille attendue vs trouvée**.
-- Quand un point est raté → la **commande exacte pour corriger** (`→ corriger : …`).
-- Une section **Bonus détectés** (chiffrement LUKS, ricing, outils pentest…).
+Le barème a une partie **Arch** et une partie **Fedora**, testées chacune **depuis
+l'OS concerné**. Le script détecte automatiquement où il tourne :
+
+- booté sur **Arch** → il teste la partie **Arch** seulement
+- rebooté sur **Fedora** → il teste la partie **Fedora** seulement
+
+👉 Lance-le **une fois sur Arch, puis reboote et relance-le sur Fedora**.
+Un seul OS ne couvre que la moitié du barème.
+
+## Affichage (vue étudiant par défaut)
+
+- **`[ PASSED ]` / `[ NOT PASSED ]`** pour chaque critère (pas de points : la notation
+  est faite par le correcteur).
+- **Taille attendue vs trouvée** sur les partitions.
+- Quand c'est `NOT PASSED` → la **commande exacte pour corriger** (`→ corriger : …`).
+- `[À VÉRIFIER]` pour ce qui dépend du jugement humain (clavier natal, fuseau).
+- Section **Bonus détectés** (chiffrement LUKS, ricing, outils pentest…).
 - Un **test SSH réel** (si la clé est disponible sur la machine).
-- Une **fiche de notation** récap + le **score** de l'OS courant.
-- Si tu as lancé **Arch puis Fedora**, un **TOTAL COMBINÉ** s'affiche.
+- Un **récapitulatif** final : ce qui passe / la liste de ce qui reste à corriger.
 
-> Une copie de la fiche est aussi écrite dans `flint_result_<os>.txt` (ignoré par git).
+> Une copie est aussi écrite dans `flint_result_<os>.txt` (ignoré par git).
+
+### Mode correcteur (réservé à l'évaluateur)
+
+```bash
+sudo ./flint_test.sh --score          # affiche les points + le total
+sudo ./flint_test.sh --score arch     # forcer l'OS si besoin
+```
+Affiche les points par critère, le total de l'OS, et — si Arch **et** Fedora ont été
+lancés — un **TOTAL COMBINÉ**.
 
 ## Lecture des résultats
 

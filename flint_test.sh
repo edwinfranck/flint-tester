@@ -27,10 +27,12 @@ fi
 
 # ---- Arguments --------------------------------------------------------------
 VERBOSE=0
+SCORE=0        # 0 = vue étudiant (PASSED / NOT PASSED) ; 1 = vue correcteur (points)
 OSARG=""
 for a in "$@"; do
     case "$a" in
         -v|--verbose) VERBOSE=1 ;;
+        --score|--prof|--correcteur) SCORE=1 ;;
         arch|archlinux|arch_linux) OSARG="arch" ;;
         fedora) OSARG="fedora" ;;
     esac
@@ -50,14 +52,16 @@ SHEET=()   # lignes de la fiche récap : "STATUT|libellé|note"
 addf() { awk -v a="$1" -v b="$2" 'BEGIN{printf "%g", a+b}'; }
 
 ok()  { EARNED=$(addf "$EARNED" "$2"); MAX=$(addf "$MAX" "$2")
-        printf "  ${G}[ OK ]${N} %-52s ${G}+%s${N}\n" "$1" "$2"
+        if [ "$SCORE" = 1 ]; then printf "  ${G}[ OK ]${N} %-52s ${G}+%s${N}\n" "$1" "$2"
+        else printf "  ${G}[  PASSED  ]${N} %s\n" "$1"; fi
         SHEET+=("OK|$1|$2/$2"); }
 # ko "libellé" points ["commande pour corriger"]
 ko()  { MAX=$(addf "$MAX" "$2")
-        printf "  ${R}[FAIL]${N} %-52s ${R}0/%s${N}\n" "$1" "$2"
+        if [ "$SCORE" = 1 ]; then printf "  ${R}[FAIL]${N} %-52s ${R}0/%s${N}\n" "$1" "$2"
+        else printf "  ${R}[NOT PASSED]${N} %s\n" "$1"; fi
         [ -n "${3:-}" ] && printf "        ${M}→ corriger : %s${N}\n" "$3"
         SHEET+=("FAIL|$1|0/$2"); }
-man() { printf "  ${Y}[ ?? ]${N} %-52s ${Y}(%s)${N}\n" "$1" "$2"
+man() { printf "  ${Y}[À VÉRIFIER]${N} %-50s ${Y}(%s)${N}\n" "$1" "$2"
         SHEET+=("??|$1|$2"); }
 info(){ printf "        ${C}%s${N}\n" "$1"; }
 hdr() { printf "\n${B}== %s ==${N}\n" "$1"; }
@@ -299,20 +303,46 @@ test_fedora() {
 #  FICHE RÉCAP + SCORE + COMBINÉ
 # =============================================================================
 print_sheet() {
-    local os="$1"
-    printf "\n${B}════════════ FICHE DE NOTATION (%s) ════════════${N}\n" "$os"
-    local line statut label note color
+    local os="$1" line statut label note color
+    local npass=0 nfail=0 ncheck=0
+
+    if [ "$SCORE" = 1 ]; then
+        # ----- Vue CORRECTEUR : fiche avec points + total -----
+        printf "\n${B}════════════ FICHE DE NOTATION (%s) ════════════${N}\n" "$os"
+        for line in "${SHEET[@]}"; do
+            statut="${line%%|*}"; label="${line#*|}"; note="${label#*|}"; label="${label%%|*}"
+            case "$statut" in
+                OK)   color="$G"; statut="[ OK ]";;
+                FAIL) color="$R"; statut="[FAIL]";;
+                *)    color="$Y"; statut="[ ?? ]";;
+            esac
+            printf "${color}%-7s${N} %-46s ${color}%s${N}\n" "$statut" "$label" "$note"
+        done
+        printf "${B}─────────────────────────────────────────────────────${N}\n"
+        printf "${B}TOTAL %s : %s / %s point(s) (auto)${N}\n" "$os" "$EARNED" "$MAX"
+        return
+    fi
+
+    # ----- Vue ÉTUDIANT : juste ce qui passe / ce qui reste à corriger -----
+    printf "\n${B}════════════ RÉCAPITULATIF (%s) ════════════${N}\n" "$os"
+    local fails=()
     for line in "${SHEET[@]}"; do
-        statut="${line%%|*}"; label="${line#*|}"; note="${label#*|}"; label="${label%%|*}"
+        statut="${line%%|*}"; label="${line#*|}"; label="${label%%|*}"
         case "$statut" in
-            OK)   color="$G"; statut="[ OK ]";;
-            FAIL) color="$R"; statut="[FAIL]";;
-            *)    color="$Y"; statut="[ ?? ]";;
+            OK)   npass=$((npass+1));;
+            FAIL) nfail=$((nfail+1)); fails+=("$label");;
+            *)    ncheck=$((ncheck+1));;
         esac
-        printf "${color}%-7s${N} %-46s ${color}%s${N}\n" "$statut" "$label" "$note"
     done
-    printf "${B}─────────────────────────────────────────────────────${N}\n"
-    printf "${B}TOTAL %s : %s / %s point(s) (auto)${N}\n" "$os" "$EARNED" "$MAX"
+    if [ "$nfail" -eq 0 ]; then
+        printf "${G}${B}✅ Tout est PASSED pour %s !${N}\n" "$os"
+    else
+        printf "${R}${B}❌ À CORRIGER (%s) :${N}\n" "$os"
+        for label in "${fails[@]}"; do printf "   ${R}• %s${N}\n" "$label"; done
+    fi
+    printf "${B}%s PASSED  /  %s NOT PASSED${N}" "$npass" "$nfail"
+    [ "$ncheck" -gt 0 ] && printf "  ${Y}(+ %s à vérifier par le correcteur)${N}" "$ncheck"
+    printf "\n"
 }
 
 # =============================================================================
@@ -329,6 +359,7 @@ printf "${B}║   Flint (G-NSA-100) — Tester non officiel    ║${N}\n"
 printf "${B}╚══════════════════════════════════════════════╝${N}\n"
 printf "OS détecté : ${C}%s${N}  (%s)" "$DETECTED" "${PRETTY_NAME:-?}"
 [ "$VERBOSE" = 1 ] && printf "   ${C}[mode preuve -v]${N}"
+[ "$SCORE" = 1 ] && printf "   ${M}[mode correcteur]${N}"
 printf "\n"
 
 case "$RUN" in
@@ -348,7 +379,7 @@ printf "%s %s\n" "$EARNED" "$MAX" > "$DIR/.flint_score_${RUN}" 2>/dev/null
 info "Fiche enregistrée dans : $RESULT"
 
 a_file="$DIR/.flint_score_arch"; f_file="$DIR/.flint_score_fedora"
-if [ -f "$a_file" ] && [ -f "$f_file" ]; then
+if [ "$SCORE" = 1 ] && [ -f "$a_file" ] && [ -f "$f_file" ]; then
     read -r ae am < "$a_file"; read -r fe fm < "$f_file"
     ge=$(addf "$ae" "$fe"); gm=$(addf "$am" "$fm")
     printf "\n${B}╞════════════ TOTAL COMBINÉ ARCH + FEDORA ════════════╡${N}\n"
@@ -357,5 +388,7 @@ if [ -f "$a_file" ] && [ -f "$f_file" ]; then
     printf "${B}  TOTAL  : %s / %s point(s) (parties auto-testables)${N}\n" "$ge" "$gm"
 fi
 
-printf "\n${Y}Rappel : Mandatory (snapshot + SSH externe), oral, tests pratiques\n"
-printf "et bonus restent à évaluer par le correcteur. Les lignes [ ?? ] aussi.${N}\n"
+# Rappel : ce projet est en DUAL BOOT -> il faut lancer le script sur les DEUX OS
+other="fedora"; [ "$RUN" = "fedora" ] && other="arch"
+printf "\n${Y}⚠  Projet DUAL BOOT : ce test ne couvre que la partie '%s'.\n" "$RUN"
+printf "   Reboote sur '%s' et relance le script pour tester l'autre moitié du barème.${N}\n" "$other"
