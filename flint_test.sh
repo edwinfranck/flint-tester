@@ -21,6 +21,11 @@ for a in "$@"; do
     case "$a" in arch|archlinux|arch_linux) OSARG=arch;; fedora) OSARG=fedora;; esac
 done
 
+# ----- Réglages campus (clavier/fuseau attendus) -----------------------------
+#  Laisser vide ("") pour repasser en évaluation manuelle [À VÉRIFIER].
+EXPECTED_KEYMAP="fr"            # clavier attendu (ex: fr). Vide = manuel
+EXPECTED_TZ="Africa/Abidjan"   # fuseau attendu (ex: Africa/Abidjan). Vide = manuel
+
 if [ -t 1 ]; then
     G=$'\033[32m'; R=$'\033[31m'; Y=$'\033[33m'; B=$'\033[1m'; C=$'\033[36m'; N=$'\033[0m'
 else G=''; R=''; Y=''; B=''; C=''; N=''; fi
@@ -98,18 +103,42 @@ check_locales() {
     local keymap tz
     keymap=$(grep -hE '^KEYMAP=' /etc/vconsole.conf 2>/dev/null | cut -d= -f2 | tr -d '"')
     tz=$(timedatectl show -p Timezone --value 2>/dev/null); [ -z "$tz" ] && tz=$(readlink -f /etc/localtime | sed 's#.*/zoneinfo/##')
-    chk "Clavier en langue natale   (KEYMAP=${keymap:-?})"
-    chk "Fuseau horaire de l'étudiant   ($tz)"
+    if [ -n "$EXPECTED_KEYMAP" ]; then
+        LBL="Clavier = $EXPECTED_KEYMAP   (KEYMAP=${keymap:-?})"
+        if [ "$keymap" = "$EXPECTED_KEYMAP" ]; then pass "$LBL"; else fail "$LBL"; fi
+    else chk "Clavier en langue natale   (KEYMAP=${keymap:-?})"; fi
+    if [ -n "$EXPECTED_TZ" ]; then
+        LBL="Fuseau = $EXPECTED_TZ   (actuel : $tz)"
+        if [ "$tz" = "$EXPECTED_TZ" ]; then pass "$LBL"; else fail "$LBL"; fi
+    else chk "Fuseau horaire de l'étudiant   ($tz)"; fi
+}
+
+ssh_loopback_test() {
+    local key=""
+    for k in /root/.ssh/flint /home/pierre/.ssh/flint ~/.ssh/flint; do
+        [ -f "$k" ] && { key="$k"; break; }
+    done
+    if [ -z "$key" ]; then
+        chk "Connexion SSH réelle non testée (clé privée 'flint' absente de la VM)"; return
+    fi
+    LBL="Connexion SSH par clé (port 42) réussie"
+    if ssh -p 42 -i "$key" -o BatchMode=yes -o StrictHostKeyChecking=no \
+           -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 \
+           pierre@127.0.0.1 true 2>/dev/null; then pass "$LBL"; else fail "$LBL"; fi
 }
 
 check_ssh() {
     hdr "Serveur SSH"
     LBL="Serveur SSH installé"; verdict command -v sshd
     local port; port=$(sshd_eff port)
-    LBL="Port SSH = 42"; if [ "$port" = "42" ]; then pass "$LBL"; else fail "$LBL"; fi
+    LBL="Port SSH = 42 (config)"; if [ "$port" = "42" ]; then pass "$LBL"; else fail "$LBL"; fi
+    LBL="Port 42 réellement en écoute"
+    if ss -tlnH 2>/dev/null | awk '{print $4}' | grep -qE '[:.]42$'; then pass "$LBL"; else fail "$LBL"; fi
     local pa pk; pa=$(sshd_eff passwordauthentication); pk=$(sshd_eff pubkeyauthentication)
     LBL="Mot de passe désactivé + clé activée"
     if [ "$pa" = "no" ] && [ "$pk" = "yes" ]; then pass "$LBL"; else fail "$LBL"; fi
+    ssh_loopback_test
+    printf "  ${Y}↳ Le test 'ssh -p 4242' (redirection de port) se fait depuis l'HÔTE, pas ici.${N}\n"
 }
 
 # =============================================================================

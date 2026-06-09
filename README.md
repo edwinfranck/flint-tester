@@ -40,8 +40,28 @@ sudo ./flint_test.sh
 
 - **`[  PASSED  ]`** : critère validé.
 - **`[NOT PASSED]`** : critère non validé.
-- **`[À VÉRIFIER]`** : impossible à juger automatiquement (clavier natal, fuseau
-  horaire) → la valeur est affichée, le correcteur tranche.
+- **`[À VÉRIFIER]`** : non jugé automatiquement → la valeur est affichée, le correcteur tranche.
+
+### Clavier / fuseau attendus (réglable)
+
+Par défaut le script évalue le clavier et le fuseau automatiquement (campus Abidjan).
+Réglable en haut du script :
+
+```bash
+EXPECTED_KEYMAP="fr"            # clavier attendu ; vide ("") = [À VÉRIFIER] manuel
+EXPECTED_TZ="Africa/Abidjan"   # fuseau attendu ; vide ("") = [À VÉRIFIER] manuel
+```
+
+### SSH : ce qui est testé
+
+- `[PASSED/NOT PASSED] Port SSH = 42 (config)` — lit `sshd_config`.
+- `[PASSED/NOT PASSED] Port 42 réellement en écoute` — vérifie via `ss` que le service écoute.
+- `[PASSED/NOT PASSED] Mot de passe désactivé + clé activée`.
+- `[PASSED/NOT PASSED] Connexion SSH par clé (port 42)` — **vraie connexion** en loopback
+  si la clé privée `flint` est présente dans la VM (`/root/.ssh/flint` ou
+  `/home/pierre/.ssh/flint`), sinon `[À VÉRIFIER]`.
+- Le test `ssh -p 4242` (redirection de port) **ne peut pas** se faire depuis la VM :
+  c'est une config VirtualBox/VMware côté hôte → à tester depuis l'hôte / le laptop du correcteur.
 
 Pour les **partitions**, en plus du verdict, le script affiche le **nombre de
 partitions** trouvées, le **schéma réel du disque** (`lsblk`) et une **comparaison
