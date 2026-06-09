@@ -43,23 +43,33 @@ in_range() { [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]; }
 fmt_size() { if [ "$2" = mb ]; then echo "${1} Mio"
              else awk -v m="$1" 'BEGIN{printf "%.1f Gio", m/1024}'; fi; }
 
-# Ligne avec comparaison : statut(ok|ko) label attendu trouvé
-row() {
-    if [ "$1" = ok ]; then
-        printf "  ${G}[  PASSED  ]${N} %-22s ${C}attendu %-9s | trouvé %s${N}\n" "$2" "$3" "$4"; PASS=$((PASS+1))
+# ----- Tolérance sur les tailles de partition (marge volontaire) -------------
+#  Un "15G" tapé par l'étudiant = 15 Gio ≈ 16,1 Go ; le FS prend aussi un peu de
+#  place. Sans marge, un bon partitionnement échouerait. Réglage en un seul endroit :
+TOL_PCT=12         # marge en ± pourcentage de la taille cible
+TOL_MIN_MIB=120    # marge minimale (en Mio) pour les petites partitions (boot/EFI)
+bounds() {         # cible(Mio) -> "borne_basse borne_haute"
+    local t=$1 m=$(( $1 * TOL_PCT / 100 ))
+    [ "$m" -lt "$TOL_MIN_MIB" ] && m=$TOL_MIN_MIB
+    echo "$(( t - m )) $(( t + m ))"
+}
+# Comparaison + verdict : label cible(Mio) échelle(mb|gb) trouvé(Mio)
+cmp_size() {
+    local label="$1" target="$2" scale="$3" found="$4" lo hi dt dlo dhi df
+    set -- $(bounds "$target"); lo="$1"; hi="$2"
+    dt=$(fmt_size "$target" "$scale"); dlo=$(fmt_size "$lo" "$scale"); dhi=$(fmt_size "$hi" "$scale")
+    if [ "$found" -eq 0 ]; then df="ABSENTE"
+        printf "  ${R}[NOT PASSED]${N} %-16s ${C}cible %-8s (toléré %s–%s) | trouvé %s${N}\n" "$label" "$dt" "$dlo" "$dhi" "$df"; FAIL=$((FAIL+1)); return
+    fi
+    df=$(fmt_size "$found" "$scale")
+    if in_range "$found" "$lo" "$hi"; then
+        printf "  ${G}[  PASSED  ]${N} %-16s ${C}cible %-8s (toléré %s–%s) | trouvé %s${N}\n" "$label" "$dt" "$dlo" "$dhi" "$df"; PASS=$((PASS+1))
     else
-        printf "  ${R}[NOT PASSED]${N} %-22s ${C}attendu %-9s | trouvé %s${N}\n" "$2" "$3" "$4"; FAIL=$((FAIL+1))
+        printf "  ${R}[NOT PASSED]${N} %-16s ${C}cible %-8s (toléré %s–%s) | trouvé %s${N}\n" "$label" "$dt" "$dlo" "$dhi" "$df"; FAIL=$((FAIL+1))
     fi
 }
-# label mountpoint lo hi (MiB) attendu-affiché
-part_row() {
-    local sz scale found
-    sz=$(size_mib "$2")
-    if [ "$4" -lt 1000 ]; then scale=mb; else scale=gb; fi
-    if [ "$sz" -eq 0 ]; then found="ABSENTE"; row ko "$1" "$5" "$found"; return; fi
-    found=$(fmt_size "$sz" "$scale")
-    if in_range "$sz" "$3" "$4"; then row ok "$1" "$5" "$found"; else row ko "$1" "$5" "$found"; fi
-}
+# label mountpoint cible(Mio) échelle(mb|gb)
+part_row() { cmp_size "$1" "$3" "$4" "$(size_mib "$2")"; }
 # Vue d'ensemble : nombre de partitions + schéma réel
 part_overview() {
     local nparts nlvm
@@ -109,16 +119,14 @@ test_arch() {
     hdr "Partitionnement  (attendu : 5 partitions)"
     part_overview
     echo
-    part_row "Partition root" /     13000 17500 "15 Go"
-    part_row "Partition home" /home  4300  6000 "5 Go"
-    part_row "Partition boot" /boot   400   700 "512 Mo"
+    part_row "Partition root" /     15360 gb   # 15 Go
+    part_row "Partition home" /home  5120 gb   # 5 Go
+    part_row "Partition boot" /boot   512 mb   # 512 Mo
     local efimp=/boot/efi; [ -d /efi ] && findmnt /efi >/dev/null 2>&1 && efimp=/efi
-    part_row "Partition EFI" "$efimp"  400  700 "512 Mo"
+    part_row "Partition EFI" "$efimp" 512 mb   # 512 Mo
     local swapb swapm; swapb=$(swapon --show=SIZE --bytes --noheadings 2>/dev/null | head -1)
     swapm=$(( ${swapb:-0} / 1024 / 1024 ))
-    if [ "${swapb:-0}" -eq 0 ]; then row ko "Swap" "2 Go" "AUCUN"
-    elif in_range "$swapm" 1700 2400; then row ok "Swap" "2 Go" "$(fmt_size "$swapm" gb)"
-    else row ko "Swap" "2 Go" "$(fmt_size "$swapm" gb)"; fi
+    cmp_size "Swap" 2048 gb "$swapm"           # 2 Go
 
     hdr "Environnement graphique"
     local graph=1 heavy=1
@@ -145,11 +153,11 @@ test_fedora() {
     hdr "Partitionnement LVM  (attendu : 4 partitions/volumes)"
     part_overview
     echo
-    part_row "Volume root" /     17000 23000 "20 Go"
-    part_row "Volume home" /home  8500 12000 "10 Go"
-    part_row "Partition boot" /boot 400   700 "512 Mo"
+    part_row "Volume root" /     20480 gb   # 20 Go
+    part_row "Volume home" /home 10240 gb   # 10 Go
+    part_row "Partition boot" /boot 512 mb  # 512 Mo
     local efimp=/boot/efi; [ -d /efi ] && findmnt /efi >/dev/null 2>&1 && efimp=/efi
-    part_row "Partition EFI" "$efimp" 400  700 "512 Mo"
+    part_row "Partition EFI" "$efimp" 512 mb # 512 Mo
 
     check_locales
 

@@ -34,7 +34,21 @@ sudo ./flint_test.sh
 
 Pour les **partitions**, en plus du verdict, le script affiche le **nombre de
 partitions** trouvées, le **schéma réel du disque** (`lsblk`) et une **comparaison
-attendu / trouvé** taille par taille.
+attendu / trouvé** taille par taille, avec la **plage tolérée**.
+
+### Tolérance sur les tailles
+
+Une marge volontaire est appliquée : un `15G` créé par l'étudiant fait en réalité
+15 Gio (≈ 16,1 Go), et le système de fichiers consomme un peu d'espace. Sans marge,
+un bon partitionnement échouerait. Réglable en haut du script :
+
+```bash
+TOL_PCT=12         # marge en ± % de la taille cible
+TOL_MIN_MIB=120    # marge minimale (Mio) pour les petites partitions (boot/EFI)
+```
+
+Exemple affiché : `cible 15.0 Gio (toléré 13.2 Gio–16.8 Gio) | trouvé 14.6 Gio → PASSED`.
+Mets `TOL_PCT` plus bas (ex. 8) pour être plus strict, plus haut pour être plus souple.
 
 À la fin : un résumé `X PASSED / Y NOT PASSED` pour l'OS courant.
 
