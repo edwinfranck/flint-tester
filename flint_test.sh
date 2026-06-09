@@ -52,16 +52,25 @@ size_mib() {  # $1 = mountpoint -> taille du device sous-jacent, en MiB
 }
 in_range() { [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]; }  # actual lo hi
 
-# Vérifie une partition : label, mountpoint, borne basse, borne haute (MiB)
+fmt_size() {  # $1 = taille en Mio, $2 = échelle (mb|gb)
+    if [ "$2" = "mb" ]; then echo "${1} Mio"
+    else awk -v m="$1" 'BEGIN{printf "%.1f Gio", m/1024}'; fi
+}
+
+# Vérifie une partition : label, mountpoint, borne basse, borne haute (MiB),
+# points, et libellé "cible" affiché à l'étudiant.
 check_part() {
-    local label="$1" mp="$2" lo="$3" hi="$4" pts="$5"
-    local sz; sz=$(size_mib "$mp")
+    local label="$1" mp="$2" lo="$3" hi="$4" pts="$5" target="$6"
+    local sz scale found
+    sz=$(size_mib "$mp")
+    if [ "$hi" -lt 1000 ]; then scale=mb; else scale=gb; fi
+    found=$(fmt_size "$sz" "$scale")
     if [ "$sz" -eq 0 ]; then
-        ko "$label (rien monté sur $mp)" "$pts"
+        ko "$label" "$pts"; info "attendu : $target  |  trouvé : RIEN monté sur $mp"
     elif in_range "$sz" "$lo" "$hi"; then
-        ok "$label (~$((sz/1024)) Gio / ${sz} Mio sur $mp)" "$pts"
+        ok "$label" "$pts"; info "attendu : $target  |  trouvé : $found  ($mp)"
     else
-        ko "$label (trouvé ${sz} Mio sur $mp, hors plage)" "$pts"
+        ko "$label" "$pts"; info "attendu : $target  |  trouvé : $found  ($mp)  -> À AJUSTER"
     fi
 }
 
@@ -135,18 +144,21 @@ test_arch() {
     printf "\n${B}#############  ARCH LINUX  #############${N}\n"
 
     hdr "Partitionnement"
-    check_part "Partition root  (15 Go)" /            13000 17500 0.5
-    check_part "Partition home  (5 Go)"  /home         4300  6000 0.5
-    check_part "Partition boot  (512 Mo)" /boot         400   700 0.5
+    check_part "Partition root" /     13000 17500 0.5 "15 Go  (accepté 13–17,5 Gio)"
+    check_part "Partition home" /home  4300  6000 0.5 "5 Go  (accepté 4,3–6 Gio)"
+    check_part "Partition boot" /boot   400   700 0.5 "512 Mo  (accepté 400–700 Mio)"
     local efimp=/boot/efi; [ -d /efi ] && findmnt /efi >/dev/null 2>&1 && efimp=/efi
-    check_part "Partition EFI   (512 Mo)" "$efimp"      400   700 0.5
+    check_part "Partition EFI" "$efimp"  400  700 0.5 "512 Mo  (accepté 400–700 Mio)"
     local swapb; swapb=$(swapon --show=SIZE --bytes --noheadings 2>/dev/null | head -1)
     if [ -n "$swapb" ]; then
         local swapm=$(( swapb / 1024 / 1024 ))
-        if in_range "$swapm" 1700 2400; then ok "Swap (2 Go) -> ${swapm} Mio" 0.5
-        else ko "Swap (2 Go) -> ${swapm} Mio (hors plage)" 0.5; fi
+        if in_range "$swapm" 1700 2400; then
+            ok "Swap actif" 0.5; info "attendu : 2 Go (accepté 1,7–2,4 Gio)  |  trouvé : $(fmt_size "$swapm" gb)"
+        else
+            ko "Swap actif" 0.5; info "attendu : 2 Go (accepté 1,7–2,4 Gio)  |  trouvé : $(fmt_size "$swapm" gb)  -> À AJUSTER"
+        fi
     else
-        ko "Swap (2 Go) actif" 0.5
+        ko "Swap actif" 0.5; info "attendu : 2 Go  |  trouvé : AUCUN swap actif"
     fi
 
     hdr "Environnement graphique"
@@ -186,11 +198,11 @@ test_fedora() {
     else
         info "Attention : aucun volume LVM détecté (le barème attend du LVM)"
     fi
-    check_part "Partition root  (20 Go)" /            17000 23000 0.5
-    check_part "Partition home  (10 Go)" /home         8500 12000 0.5
-    check_part "Partition boot  (512 Mo)" /boot         400   700 0.5
+    check_part "Partition root" /     17000 23000 0.5 "20 Go  (accepté 17–23 Gio)"
+    check_part "Partition home" /home  8500 12000 0.5 "10 Go  (accepté 8,5–12 Gio)"
+    check_part "Partition boot" /boot   400   700 0.5 "512 Mo  (accepté 400–700 Mio)"
     local efimp=/boot/efi; [ -d /efi ] && findmnt /efi >/dev/null 2>&1 && efimp=/efi
-    check_part "Partition EFI   (512 Mo)" "$efimp"      400   700 0.5
+    check_part "Partition EFI" "$efimp"  400  700 0.5 "512 Mo  (accepté 400–700 Mio)"
 
     check_locales
 
